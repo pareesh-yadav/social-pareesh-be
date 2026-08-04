@@ -1,0 +1,99 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String
+  profilePicUrl String?
+  bio           String?
+  status        String    @default("offline") // online, offline, away
+  lastSeen      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  sentRequests    FriendRequest[] @relation("sender")
+  receivedRequests FriendRequest[] @relation("receiver")
+  conversations1  Conversation[]  @relation("user1")
+  conversations2  Conversation[]  @relation("user2")
+  sentMessages    Message[]       @relation("sender")
+  readReceipts    ReadReceipt[]
+
+  @@index([email])
+  @@index([username])
+}
+
+model FriendRequest {
+  id        String   @id @default(cuid())
+  sender    User     @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId  String
+  receiver  User     @relation("receiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiverId String
+  status    String   @default("pending") // pending, accepted, blocked
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([senderId, receiverId])
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  user1         User      @relation("user1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user1Id       String
+  user2         User      @relation("user2", fields: [user2Id], references: [id], onDelete: Cascade)
+  user2Id       String
+  lastMessageId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  messages Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  sender         User        @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId       String
+  content        String
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  parentMessage  Message?    @relation("replies", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  parentMessageId String?
+  replies        Message[]   @relation("replies")
+  readReceipts   ReadReceipt[]
+  createdAt      DateTime    @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model ReadReceipt {
+  id        String   @id @default(cuid())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  readAt    DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+}
