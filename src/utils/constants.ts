@@ -25,9 +25,13 @@ export const USER_LIMITS = {
   MIN_USERNAME_LENGTH: 3,
   MAX_USERNAME_LENGTH: 50,
   MIN_PASSWORD_LENGTH: 6,
-  MAX_PASSWORD_LENGTH: 100,
+  MAX_PASSWORD_LENGTH: 50,
   MAX_BIO_LENGTH: 500,
 } as const;
+
+export const BCRIPT_LIMITS = {
+  BCRYPT_ROUNDS: 10,
+}
 
 // Pagination
 export const PAGINATION = {

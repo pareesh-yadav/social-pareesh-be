@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/userService';
-import { validate, updateProfileSchema } from '../utils/validators';
+import { validate, updateProfileSchema, changePasswordSchema } from '../utils/validators';
 
 export const userController = {
   getUser: async (req: Request, res: Response): Promise<Response> => {
@@ -77,4 +77,18 @@ export const userController = {
       data: users,
     });
   },
+
+  changePassword: async (req: Request, res: Response): Promise<Response> => {
+    const {id: userId} = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+   const data = validate(changePasswordSchema, { userId, oldPassword:currentPassword, newPassword});
+
+    const response = await userService.changePassword(data.userId!, data.oldPassword, data.newPassword);
+
+    return res.json({
+      success: true,
+      message: response.message || 'Password changed successfully',
+    });
+  }
 };
