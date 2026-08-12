@@ -1,5 +1,38 @@
 import { prisma } from '../config/database';
 import { NotFoundError, ValidationError } from '../utils/errors';
+import bcrypt from 'bcryptjs';
+import { BCRIPT_LIMITS, USER_LIMITS } from '../utils/constants';
+
+// Constants for password validation
+const MIN_PASSWORD_LENGTH = USER_LIMITS.MIN_PASSWORD_LENGTH;
+const MAX_PASSWORD_LENGTH = USER_LIMITS.MAX_PASSWORD_LENGTH;
+
+// Password validation utility
+const validatePassword = (password: string): string | null => {
+  if (!password || typeof password !== 'string') {
+    return 'Password is required';
+  }
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`;
+  }
+
+  if (password.length > MAX_PASSWORD_LENGTH) {
+    return `Password must not exceed ${MAX_PASSWORD_LENGTH} characters`;
+  }
+
+  // Require at least one uppercase, one lowercase, one number, and one special character
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=$$$${};':"\\|,.<>\/?]/.test(password);
+
+  if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecialChar) {
+    return 'Password must contain uppercase, lowercase, number, and special character';
+  }
+
+  return null;
+};
 
 export const userService = {
   getUserById: async (userId: string) => {
@@ -208,6 +241,97 @@ export const userService = {
 
     return users;
   },
+
+ changePassword: async (
+    userId: string,
+    oldPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message: string }> => {
+    
+    // Input validation
+    if (!userId || typeof userId !== 'string') {
+      throw new ValidationError('Invalid user ID');
+    }
+
+    if (!oldPassword || typeof oldPassword !== 'string') {
+      throw new ValidationError('Current password is required');
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      throw new ValidationError('New password is required');
+    }
+
+    // Validate new password strength
+    const passwordValidationError = validatePassword(newPassword);
+    if (passwordValidationError) {
+      throw new ValidationError(passwordValidationError);
+    }
+
+    // Check if passwords are identical
+    if (oldPassword === newPassword) {
+      throw new ValidationError(
+        'New password must be different from the current password'
+      );
+    }
+
+    // Fetch user with password hash
+    let user;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          passwordHash: true,
+          email: true,
+        },
+      });
+    } catch (error) {
+      throw new ValidationError('Failed to retrieve user information');
+    }
+
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    // Verify old password (assumes password is bcrypt hashed)
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await bcrypt.compare(oldPassword, user.passwordHash);
+    } catch (error) {
+      throw new ValidationError('Failed to verify password');
+    }
+
+    if (!isPasswordValid) {
+      throw new ValidationError('Current password is incorrect');
+    }
+
+    // Hash new password
+    let hashedNewPassword: string;
+    try {
+      hashedNewPassword = await bcrypt.hash(newPassword, BCRIPT_LIMITS.BCRYPT_ROUNDS);
+    } catch (error) {
+      throw new ValidationError('Failed to process new password');
+    }
+
+    // Update password in database
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: hashedNewPassword,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      throw new ValidationError('Failed to update password');
+    }
+
+    return {
+      success: true,
+      message: 'Password changed successfully',
+    };
+  },
+
 
   deleteUser: async (userId: string) => {
     await prisma.user.delete({
