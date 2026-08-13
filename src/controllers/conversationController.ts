@@ -50,4 +50,16 @@ export const conversationController = {
       data: conversation,
     });
   },
+
+  deleteConversation: async (req: Request, res: Response): Promise<Response> => {
+    const { id } = req.params;
+    const conversationId = Array.isArray(id) ? id[0] : id;
+
+    await conversationService.deleteConversation(conversationId, req.userId!);
+
+    return res.json({
+      success: true,
+      message: 'Conversation deleted',
+    });
+  }
 };
