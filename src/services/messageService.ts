@@ -53,9 +53,9 @@ export const messageService = {
 
     return {
       items: messages
-        .map((msg) => ({
+        .map((msg: (typeof messages)[number]) => ({
           ...msg,
-          readBy: msg.readReceipts.map((r) => r.userId),
+          readBy: msg.readReceipts.map((r: { userId: string }) => r.userId),
         }))
         .reverse(),
       total,
@@ -140,7 +140,7 @@ export const messageService = {
 
     return {
       ...message,
-      readBy: message.readReceipts.map((r) => r.userId),
+      readBy: message.readReceipts.map((r: { userId: string }) => r.userId),
     };
   },
 
@@ -195,7 +195,7 @@ export const messageService = {
 
     return {
       ...updatedMessage,
-      readBy: updatedMessage.readReceipts.map((r) => r.userId),
+      readBy: updatedMessage.readReceipts.map((r: { userId: string }) => r.userId),
     };
   },
 
@@ -270,7 +270,7 @@ export const messageService = {
       },
     });
 
-    return updatedMessage ? { ...updatedMessage, readBy: updatedMessage.readReceipts.map((r) => r.userId) } : null;
+    return updatedMessage ? { ...updatedMessage, readBy: updatedMessage.readReceipts.map((r: { userId: string }) => r.userId) } : null;
   },
 
   getUnreadCount: async (conversationId: string, userId: string) => {

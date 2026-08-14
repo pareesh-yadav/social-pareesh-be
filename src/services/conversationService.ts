@@ -53,7 +53,7 @@ export const conversationService = {
 
     // Count unread messages and format response
     const conversationsWithDetails = await Promise.all(
-      conversations.map(async (conv) => {
+      conversations.map(async (conv: (typeof conversations)[number]) => {
         const otherUserId = conv.user1Id === userId ? conv.user2Id : conv.user1Id;
 
         const unreadCount = await prisma.message.count({
