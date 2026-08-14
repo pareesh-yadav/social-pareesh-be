@@ -70,6 +70,16 @@ app.use('/api', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/friends', friendRoutes);
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome to the Social Pareesh API',
+    environment: NODE_ENV,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Health check
 app.get('/health', (_req, res) => {
   res.json({
