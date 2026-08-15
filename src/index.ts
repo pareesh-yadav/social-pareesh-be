@@ -20,11 +20,31 @@ import friendRoutes from './routes/friendRoutes';
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local' });
 
+// Parse CORS_ORIGIN as a comma-separated list of allowed origins.
+// Supports a single origin (e.g. "http://localhost:5173") or multiple
+// comma-separated origins (e.g. "http://localhost:5173,https://chatly-drab.vercel.app").
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOriginHandler = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void
+) => {
+  // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+  if (!origin || allowedOrigins.includes(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  }
+};
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOriginHandler,
     methods: ['GET', 'POST'],
   },
 });
@@ -35,7 +55,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: corsOriginHandler,
   credentials: true,
 }));
 app.use(morgan('combined'));
@@ -80,7 +100,7 @@ const startServer = async () => {
 ✅ Server running on http://localhost:${PORT}
 📡 Socket.io running on ws://localhost:${PORT}
 🌍 Environment: ${NODE_ENV}
-🔗 CORS Origin: ${process.env.CORS_ORIGIN || 'http://localhost:5173'}
+🔗 CORS Origins: ${allowedOrigins.join(', ')}
       `);
     });
   } catch (error) {
