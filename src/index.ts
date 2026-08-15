@@ -30,11 +30,16 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
 
 const corsOriginHandler = (
   origin: string | undefined,
-  callback: (err: Error | null, allow?: boolean) => void
+  callback: (err: Error | null, allow?: boolean | string) => void
 ) => {
   // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-  if (!origin || allowedOrigins.includes(origin)) {
+  if (!origin) {
     callback(null, true);
+  } else if (allowedOrigins.includes(origin)) {
+    // Return the specific matched origin so the CORS middleware sets a
+    // single-value Access-Control-Allow-Origin header instead of echoing
+    // back a list of all allowed origins.
+    callback(null, origin);
   } else {
     callback(new Error(`Origin ${origin} not allowed by CORS`));
   }
