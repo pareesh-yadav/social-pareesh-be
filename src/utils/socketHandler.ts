@@ -49,15 +49,23 @@ export const setupSocketHandlers = (io: any) => {
     // Edit message
     socket.on(
       'message:edit',
-      async (data: { messageId: string; senderId: string; content: string }) => {
+      async (data: { messageId: string; senderId: string; content: string; conversationId: string }) => {
         try {
+          // Update in DB
           const message = await messageService.editMessage(
             data.messageId,
             data.senderId,
             data.content
           );
 
-          io.emit('message:updated', message);
+          // Force the conversationId into the broadcast just in case the DB returned it without one
+          const emitData = {
+            ...message,
+            conversationId: data.conversationId 
+          };
+
+          // Broadcast to everyone in that specific chat room
+          io.to(data.conversationId).emit('message:updated', emitData);
         } catch (error) {
           socket.emit('error', { message: `Failed to edit message ${error}` });
         }
@@ -67,10 +75,14 @@ export const setupSocketHandlers = (io: any) => {
     // Delete message
     socket.on(
       'message:delete',
-      async (data: { messageId: string; senderId: string }) => {
+      async (data: { messageId: string; senderId: string; conversationId: string }) => {
         try {
           await messageService.deleteMessage(data.messageId, data.senderId);
-          io.emit('message:deleted', { messageId: data.messageId });
+          
+          io.to(data.conversationId).emit('message:deleted', { 
+            messageId: data.messageId,
+            conversationId: data.conversationId
+          });
         } catch (error) {
           socket.emit('error', { message: `Failed to delete message ${error}` });
         }
