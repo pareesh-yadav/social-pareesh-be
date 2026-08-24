@@ -9,6 +9,14 @@ interface UserSocket {
 
 const onlineUsers = new Map<string, UserSocket>();
 
+// Helper to find a userId by their socket connection
+const getUserIdBySocket = (socketId: string): string | null => {
+  for (const [userId, user] of onlineUsers.entries()) {
+    if (user.socketId === socketId) return userId;
+  }
+  return null;
+};
+
 export const setupSocketHandlers = (io: any) => {
   io.on('connection', (socket: Socket) => {
 
@@ -141,16 +149,67 @@ export const setupSocketHandlers = (io: any) => {
       socket.leave(data.conversationId);
     });
 
-    // User disconnect
-    socket.on('disconnect', async () => {
-      // Find user by socket id
-      let disconnectedUserId: string | null = null;
-      for (const [userId, userSocket] of onlineUsers.entries()) {
-        if (userSocket.socketId === socket.id) {
-          disconnectedUserId = userId;
-          break;
-        }
+    // ==========================================
+    // AUDIO / VIDEO CALL SIGNALING (WEBRTC)
+    // ==========================================
+
+    socket.on('call:initiate', (data: { targetUserId: string; callerId: string; withVideo: boolean }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      if (targetUser) {
+        socket.to(targetUser.socketId).emit('call:incoming', {
+          callerId: data.callerId,
+          withVideo: data.withVideo
+        });
+      } else {
+        socket.emit('call:error', { message: 'User is currently offline' });
       }
+    });
+
+    socket.on('call:accept', (data: { targetUserId: string }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      if (targetUser) {
+        socket.to(targetUser.socketId).emit('call:accepted');
+      }
+    });
+
+    socket.on('call:end', (data: { targetUserId: string }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      if (targetUser) {
+        socket.to(targetUser.socketId).emit('call:ended');
+      }
+    });
+
+    socket.on('webrtc:offer', (data: { targetUserId: string; offer: any }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      const callerId = getUserIdBySocket(socket.id);
+      if (targetUser && callerId) {
+        socket.to(targetUser.socketId).emit('webrtc:offer', { 
+          offer: data.offer, 
+          callerId: callerId 
+        });
+      }
+    });
+
+    socket.on('webrtc:answer', (data: { targetUserId: string; answer: any }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      if (targetUser) {
+        socket.to(targetUser.socketId).emit('webrtc:answer', { answer: data.answer });
+      }
+    });
+
+    socket.on('webrtc:ice-candidate', (data: { targetUserId: string; candidate: any }) => {
+      const targetUser = onlineUsers.get(data.targetUserId);
+      if (targetUser) {
+        socket.to(targetUser.socketId).emit('webrtc:ice-candidate', { candidate: data.candidate });
+      }
+    });
+
+    // ==========================================
+    // USER DISCONNECT
+    // ==========================================
+
+    socket.on('disconnect', async () => {
+      const disconnectedUserId = getUserIdBySocket(socket.id);
 
       if (disconnectedUserId) {
         onlineUsers.delete(disconnectedUserId);
