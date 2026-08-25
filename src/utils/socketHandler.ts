@@ -24,6 +24,7 @@ export const setupSocketHandlers = (io: any) => {
     socket.on('user:login', async (data: { userId: string }) => {
       const { userId } = data;
       onlineUsers.set(userId, { userId, socketId: socket.id });
+      socket.join(userId);
       await userService.updateUserStatus(userId, 'online');
 
       // Broadcast user online
@@ -154,36 +155,26 @@ export const setupSocketHandlers = (io: any) => {
     // ==========================================
 
     socket.on('call:initiate', (data: { targetUserId: string; callerId: string; withVideo: boolean }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
-      if (targetUser) {
-        socket.to(targetUser.socketId).emit('call:incoming', {
-          callerId: data.callerId,
-          withVideo: data.withVideo
-        });
-      } else {
-        socket.emit('call:error', { message: 'User is currently offline' });
-      }
+      // Broadcast directly to the target user's personal room
+      // This guarantees it hits them even if their socketId changed or they have multiple tabs open!
+      socket.to(data.targetUserId).emit('call:incoming', {
+        callerId: data.callerId,
+        withVideo: data.withVideo
+      });
     });
 
     socket.on('call:accept', (data: { targetUserId: string }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
-      if (targetUser) {
-        socket.to(targetUser.socketId).emit('call:accepted');
-      }
+      socket.to(data.targetUserId).emit('call:accepted');
     });
 
     socket.on('call:end', (data: { targetUserId: string }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
-      if (targetUser) {
-        socket.to(targetUser.socketId).emit('call:ended');
-      }
+      socket.to(data.targetUserId).emit('call:ended');
     });
 
     socket.on('webrtc:offer', (data: { targetUserId: string; offer: any }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
       const callerId = getUserIdBySocket(socket.id);
-      if (targetUser && callerId) {
-        socket.to(targetUser.socketId).emit('webrtc:offer', { 
+      if (callerId) {
+        socket.to(data.targetUserId).emit('webrtc:offer', { 
           offer: data.offer, 
           callerId: callerId 
         });
@@ -191,17 +182,11 @@ export const setupSocketHandlers = (io: any) => {
     });
 
     socket.on('webrtc:answer', (data: { targetUserId: string; answer: any }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
-      if (targetUser) {
-        socket.to(targetUser.socketId).emit('webrtc:answer', { answer: data.answer });
-      }
+      socket.to(data.targetUserId).emit('webrtc:answer', { answer: data.answer });
     });
 
     socket.on('webrtc:ice-candidate', (data: { targetUserId: string; candidate: any }) => {
-      const targetUser = onlineUsers.get(data.targetUserId);
-      if (targetUser) {
-        socket.to(targetUser.socketId).emit('webrtc:ice-candidate', { candidate: data.candidate });
-      }
+      socket.to(data.targetUserId).emit('webrtc:ice-candidate', { candidate: data.candidate });
     });
 
     // ==========================================
