@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -72,6 +69,8 @@ model Message {
   sender         User        @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
   senderId       String
   content        String
+  attachmentUrl   String?
+  attachmentType  String?
   editedAt       DateTime?
   deletedAt      DateTime?
   parentMessage  Message?    @relation("replies", fields: [parentMessageId], references: [id], onDelete: SetNull)

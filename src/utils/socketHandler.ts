@@ -37,15 +37,25 @@ export const setupSocketHandlers = (io: any) => {
       async (data: {
         conversationId: string;
         senderId: string;
-        content: string;
+        content?: string;
         parentMessageId?: string;
+        attachmentUrl?: string;
+        attachmentType?: 'image' | 'video';
       }) => {
         try {
+          const cleanContent = data.content || "";
+          if (!cleanContent.trim() && !data.attachmentUrl) {
+            socket.emit('error', { message: 'Cannot send an empty message' });
+            return; 
+          }
           const message = await messageService.sendMessage(
             data.conversationId,
             data.senderId,
-            data.content,
-            data.parentMessageId
+            cleanContent,
+            data.parentMessageId,
+            data.attachmentUrl,
+            data.attachmentType
+
           );
 
           io.to(data.conversationId).emit('message:new', message);
@@ -122,21 +132,31 @@ export const setupSocketHandlers = (io: any) => {
     );
 
     // Mark as read
-    socket.on('message:read', async (data: { messageId: string; userId: string; conversationId: string }) => {
+    socket.on('message:read', async (data: { messageId?: string; userId: string; conversationId: string }) => {
       try {
-        const updatedMessage = await messageService.markAsRead(data.messageId, data.userId);
-        if (updatedMessage) {
-
-          // Broadcast to all users in the conversation room
+        if (data.messageId) {
+          // SCENARIO A: A specific message was read
+          const updatedMessage = await messageService.markAsRead(data.messageId, data.userId);
+          if (updatedMessage) {
+            io.to(data.conversationId).emit('message:read', {
+              messageId: updatedMessage.id,
+              conversationId: updatedMessage.conversationId,
+              readBy: updatedMessage.readBy,
+              userId: data.userId,
+            });
+          }
+        } else {
+          // SCENARIO B: The user opened the chat, mark the whole conversation as read
+          await messageService.markConversationAsRead(data.conversationId, data.userId);
+          
+          // Broadcast to the room so the sender's UI removes the unread badges instantly
           io.to(data.conversationId).emit('message:read', {
-            messageId: updatedMessage.id,
-            conversationId: updatedMessage.conversationId,
-            readBy: updatedMessage.readBy,
+            conversationId: data.conversationId,
             userId: data.userId,
           });
         }
       } catch (error) {
-        console.error('❌ Error marking message as read:', error);
+        console.error('❌ Error marking message(s) as read:', error);
       }
     });
 

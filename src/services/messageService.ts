@@ -38,6 +38,8 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
+        attachmentUrl: true,  // <-- ADDED THIS
+        attachmentType: true, // <-- ADDED THIS
         readReceipts: {
           select: { userId: true },
         },
@@ -67,12 +69,15 @@ export const messageService = {
   sendMessage: async (
     conversationId: string,
     senderId: string,
-    content: string,
-    parentMessageId?: string
+    content: string = "",
+    parentMessageId?: string,
+    attachmentUrl?: string,
+    attachmentType?: 'image' | 'video'
   ) => {
-    // Validate content
-    if (!content || content.trim().length === 0) {
-      throw new ValidationError('Message content cannot be empty');
+    // 1. Strict Server-Side Validation
+    const safeContent = content.trim();
+    if (!safeContent && !attachmentUrl) {
+      throw new Error('Message must have text content or an attachment.');
     }
 
     // Verify conversation exists
@@ -114,8 +119,10 @@ export const messageService = {
       data: {
         conversationId,
         senderId,
-        content: content.trim(),
+        content: safeContent,
         parentMessageId,
+        attachmentUrl: attachmentUrl || null,
+        attachmentType: attachmentType || null,
       },
       select: {
         id: true,
@@ -126,6 +133,8 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
+        attachmentUrl: true,  // <-- ADDED THIS
+        attachmentType: true, // <-- ADDED THIS
         readReceipts: {
           select: { userId: true },
         },
@@ -187,6 +196,8 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
+        attachmentUrl: true,  // <-- ADDED THIS
+        attachmentType: true, // <-- ADDED THIS
         readReceipts: {
           select: { userId: true },
         },
@@ -264,6 +275,8 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
+        attachmentUrl: true,  // <-- ADDED THIS
+        attachmentType: true, // <-- ADDED THIS
         readReceipts: {
           select: { userId: true },
         },
@@ -271,6 +284,33 @@ export const messageService = {
     });
 
     return updatedMessage ? { ...updatedMessage, readBy: updatedMessage.readReceipts.map((r: { userId: string }) => r.userId) } : null;
+  },
+
+  markConversationAsRead: async (conversationId: string, userId: string) => {
+    // 1. Find all messages in this conversation sent by OTHER users that haven't been read yet
+    const unreadMessages = await prisma.message.findMany({
+      where: {
+        conversationId,
+        senderId: { not: userId },
+        readReceipts: {
+          none: { userId },
+        },
+      },
+      select: { id: true },
+    });
+
+    if (unreadMessages.length === 0) return; // Nothing to update
+
+    // 2. Bulk create read receipts for all unread messages instantly
+    const readReceiptData = unreadMessages.map((msg) => ({
+      messageId: msg.id,
+      userId,
+    }));
+
+    await prisma.readReceipt.createMany({
+      data: readReceiptData,
+      skipDuplicates: true, // Prevents crashes if a receipt somehow exists
+    });
   },
 
   getUnreadCount: async (conversationId: string, userId: string) => {
