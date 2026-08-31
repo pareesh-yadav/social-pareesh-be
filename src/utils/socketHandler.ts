@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io';
 import { userService } from '../services/userService';
 import { messageService } from '../services/messageService';
+import { callService } from '../services/callService';
 
 interface UserSocket {
   userId: string;
@@ -174,20 +175,63 @@ export const setupSocketHandlers = (io: any) => {
     // AUDIO / VIDEO CALL SIGNALING (WEBRTC)
     // ==========================================
 
-    socket.on('call:initiate', (data: { targetUserId: string; callerId: string; withVideo: boolean }) => {
-      // Broadcast directly to the target user's personal room
-      // This guarantees it hits them even if their socketId changed or they have multiple tabs open!
+    // socket.on('call:initiate', (data: { targetUserId: string; callerId: string; withVideo: boolean }) => {
+    //   // Broadcast directly to the target user's personal room
+    //   // This guarantees it hits them even if their socketId changed or they have multiple tabs open!
+    //   socket.to(data.targetUserId).emit('call:incoming', {
+    //     callerId: data.callerId,
+    //     withVideo: data.withVideo
+    //   });
+    // });
+    
+    socket.on('call:initiate', async (data: { targetUserId: string; callerId: string; withVideo: boolean }) => {
+      // 1. Log the start of the call in the database
+      try {
+        await callService.initiateCall(data.callerId, data.targetUserId, data.withVideo);
+      } catch (err) {
+        console.error("Failed to log call initiation", err);
+      }
+
       socket.to(data.targetUserId).emit('call:incoming', {
         callerId: data.callerId,
         withVideo: data.withVideo
       });
     });
 
-    socket.on('call:accept', (data: { targetUserId: string }) => {
+    // socket.on('call:accept', (data: { targetUserId: string }) => {
+    //   socket.to(data.targetUserId).emit('call:accepted');
+    // });
+
+    socket.on('call:accept', async (data: { targetUserId: string }) => {
+      // data.targetUserId is the original caller. The person accepting is the socket.user
+      const receiverId = getUserIdBySocket(socket.id); 
+      
+      if (receiverId) {
+        try {
+          await callService.acceptCall(data.targetUserId, receiverId);
+        } catch (err) {}
+      }
+
       socket.to(data.targetUserId).emit('call:accepted');
     });
 
-    socket.on('call:end', (data: { targetUserId: string }) => {
+    // socket.on('call:end', (data: { targetUserId: string }) => {
+    //   socket.to(data.targetUserId).emit('call:ended');
+    // });
+
+    socket.on('call:end', async (data: { targetUserId: string }) => {
+      // We don't know who hung up first (caller or receiver), so we check both directions
+      const enderId = getUserIdBySocket(socket.id);
+      
+      if (enderId) {
+        try {
+          // Attempt to end it assuming ender was the caller
+          await callService.endCall(enderId, data.targetUserId);
+          // Attempt to end it assuming ender was the receiver
+          await callService.endCall(data.targetUserId, enderId);
+        } catch (err) {}
+      }
+
       socket.to(data.targetUserId).emit('call:ended');
     });
 

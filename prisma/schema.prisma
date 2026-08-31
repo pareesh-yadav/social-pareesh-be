@@ -13,7 +13,9 @@ model User {
   passwordHash  String
   profilePicUrl String?
   bio           String?
-  status        String    @default("offline") // online, offline, away
+  status        String    @default("offline")
+  callsMade     CallLog[] @relation("CallsMade")
+  callsReceived CallLog[] @relation("CallsReceived")
   lastSeen      DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -95,4 +97,22 @@ model ReadReceipt {
   @@unique([messageId, userId])
   @@index([messageId])
   @@index([userId])
+}
+
+model CallLog {
+  id          String    @id @default(cuid())
+  callerId    String
+  receiverId  String
+  type        String    // "audio" or "video"
+  status      String    // "missed", "completed", "rejected", "ongoing"
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  duration    Int?      @default(0) // Duration in seconds
+
+  caller      User      @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver    User      @relation("CallsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@index([startedAt])
 }

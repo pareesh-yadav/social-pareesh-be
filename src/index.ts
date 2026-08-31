@@ -16,6 +16,7 @@ import userRoutes from './routes/userRoutes';
 import messageRoutes from './routes/messageRoutes';
 import conversationRoutes from './routes/conversationRoutes';
 import friendRoutes from './routes/friendRoutes';
+import callRoutes from './routes/callRoutes';
 
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local' });
@@ -69,6 +70,7 @@ app.use('/api/users', userRoutes);
 app.use('/api', messageRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/calls', callRoutes);
 
 // Root route
 app.get('/', (_req, res) => {
