@@ -11,6 +11,15 @@ import {
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+const createVerificationOtp = () => {
+  const otp = crypto.randomInt(100000, 999999).toString();
+  return {
+    otp,
+    hashedOtp: crypto.createHash('sha256').update(otp).digest('hex'),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  };
+};
+
 export const authService = {
  register: async (username: string, email: string, password: string) => {
     const normalizedEmail = normalizeEmail(email);
@@ -28,9 +37,7 @@ export const authService = {
 
     const passwordHash = await passwordUtils.hashPassword(password);
 
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
-    const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
+    const { otp, hashedOtp, expiresAt: otpExpire } = createVerificationOtp();
 
     const user = await prisma.user.create({
       data: {
@@ -122,6 +129,32 @@ export const authService = {
       token,
       refreshToken,
     };
+  },
+
+  resendVerification: async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (!user || user.status !== 'pending_verification') {
+      return true;
+    }
+
+    const { otp, hashedOtp, expiresAt } = createVerificationOtp();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken: hashedOtp,
+        resetPasswordExpire: expiresAt,
+      },
+    });
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Your email verification code',
+      html: `<p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
+    });
+
+    return true;
   },
 
   login: async (email: string, password: string) => {

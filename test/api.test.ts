@@ -66,6 +66,23 @@ describe('authentication and password security', () => {
     expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'online', resetPasswordToken: null }) }));
   });
 
+  test('resends a hashed OTP for pending users without revealing unknown accounts', async () => {
+    prisma.user.findUnique.mockResolvedValue(user({ status: 'pending_verification' }));
+    prisma.user.update.mockResolvedValue(user({ status: 'pending_verification' }));
+
+    const pending = await request(app).post('/api/auth/resend-verification').send({ email: 'alice@example.com' });
+    expect(pending.status).toBe(200);
+    expect(pending.body.message).toMatch(/if an account/i);
+    expect(prisma.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ resetPasswordToken: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    }));
+
+    prisma.user.findUnique.mockResolvedValue(null);
+    const unknown = await request(app).post('/api/auth/resend-verification').send({ email: 'missing@example.com' });
+    expect(unknown.status).toBe(200);
+    expect(unknown.body.message).toBe(pending.body.message);
+  });
+
   test('blocks pending users from logging in', async () => {
     prisma.user.findUnique.mockResolvedValue(user({ status: 'pending_verification' }));
 

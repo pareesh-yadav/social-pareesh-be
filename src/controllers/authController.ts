@@ -31,6 +31,21 @@ export const authController = {
     });
   },
 
+  resendVerification: async (req: Request, res: Response): Promise<Response> => {
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+
+    await authService.resendVerification(email);
+
+    return res.status(200).json({
+      success: true,
+      message: 'If an account is awaiting verification, a new code has been sent.',
+    });
+  },
+
   login: async (req: Request, res: Response): Promise<Response> => {
     const { email, password } = validate(loginSchema, req.body);
 
