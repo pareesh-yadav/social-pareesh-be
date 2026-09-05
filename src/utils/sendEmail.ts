@@ -8,13 +8,15 @@ interface EmailOptions {
 }
 
 export const sendEmail = async (options: EmailOptions) => {
+  // Configured to use the Gmail API via HTTPS (Port 443)
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false,
+    service: 'gmail',
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      type: 'OAuth2',
+      user: process.env.FROM_EMAIL,
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
     },
   });
 
