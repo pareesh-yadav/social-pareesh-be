@@ -1,4 +1,4 @@
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 interface EmailOptions {
   to: string;
@@ -7,26 +7,23 @@ interface EmailOptions {
   html?: string;
 }
 
-export const sendEmail = async (options: EmailOptions) => {
-  // Configured to use the Gmail API via HTTPS (Port 443)
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      type: 'OAuth2',
-      user: process.env.FROM_EMAIL,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-    },
-  });
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-  const message = {
-    from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
+export const sendEmail = async (options: EmailOptions) => {
+  const fromAddress = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+  const fromName = process.env.FROM_NAME ? `${process.env.FROM_NAME} ` : '';
+
+  const { data, error } = await resend.emails.send({
+    from: `${fromName}<${fromAddress}>`.trim(),
     to: options.to,
     subject: options.subject,
     text: options.text,
-    html: options.html,
-  };
+    html: options.html || options.text || '',
+  });
 
-  await transporter.sendMail(message);
+  if (error) {
+    throw new Error(`Failed to send email: ${error.message}`);
+  }
+
+  return data;
 };
