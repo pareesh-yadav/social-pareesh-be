@@ -1,3 +1,5 @@
+import https from 'node:https';
+
 interface SendEmailOptions {
   to: string;
   subject: string;
@@ -7,8 +9,6 @@ interface SendEmailOptions {
   toName?: string;
   templateParams?: Record<string, unknown>;
 }
-
-const EMAILJS_API_URL = 'https://api.emailjs.com/api/v1.0/email/send';
 
 export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
   const serviceId = process.env.EMAILJS_SERVICE_ID;
@@ -22,7 +22,7 @@ export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
     );
   }
 
-  const payload = {
+  const payload = JSON.stringify({
     service_id: serviceId,
     template_id: templateId,
     user_id: publicKey,
@@ -38,18 +38,48 @@ export const sendEmail = async (options: SendEmailOptions): Promise<void> => {
       html_content: options.html || '',
       ...options.templateParams,
     },
-  };
-
-  const response = await fetch(EMAILJS_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`EmailJS API request failed (${response.status}): ${errorText || response.statusText}`);
-  }
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      'https://api.emailjs.com/api/v1.0/email/send',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+        timeout: 15000,
+      },
+      (res) => {
+        let responseText = '';
+        res.on('data', (chunk) => {
+          responseText += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `EmailJS API request failed (${res.statusCode}): ${responseText || res.statusMessage}`
+              )
+            );
+          }
+        });
+      }
+    );
+
+    req.on('error', (err) => {
+      reject(new Error(`Failed to send email via EmailJS: ${err.message}`));
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('EmailJS request timed out'));
+    });
+
+    req.write(payload);
+    req.end();
+  });
 };
