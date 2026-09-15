@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { userService } from '../services/userService';
 import { messageService } from '../services/messageService';
 import { callService } from '../services/callService';
+import { authorizationService } from '../services/authorizationService';
 import { jwtUtils } from './jwt';
 
 interface UserSocket {
@@ -56,9 +57,73 @@ const removeSocketUser = (socketId: string): { userId: string; isOffline: boolea
   return { userId, isOffline: false };
 };
 
+let ioInstance: any = null;
+
+export const getIO = () => ioInstance;
+
+export const isUserConnected = (userId: string): boolean => {
+  return (userSockets.get(userId)?.size || 0) > 0;
+};
+
+/**
+ * Broadcasts user presence while strictly respecting privacy settings:
+ * - 'nobody': Always appears offline to everyone
+ * - 'friends': Appears online only to accepted friends
+ * - 'everyone': Appears online to everyone
+ */
+export const broadcastPresence = async (io: any, userId: string, isOnline: boolean) => {
+  if (!io) return;
+
+  if (!isOnline) {
+    io.emit('user:offline', { userId });
+    return;
+  }
+
+  let user = null;
+  if (prisma.user?.findUnique) {
+    user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { privacyOnlineStatus: true },
+    });
+  }
+
+  const privacy = user?.privacyOnlineStatus || 'everyone';
+
+  if (privacy === 'nobody') {
+    // Strictly suppress online presence; emit user:offline so others know to remove any green dot
+    io.emit('user:offline', { userId });
+    return;
+  }
+
+  if (privacy === 'friends') {
+    let friendIds: string[] = [];
+    if (prisma.friendRequest?.findMany) {
+      const friends = await prisma.friendRequest.findMany({
+        where: {
+          status: 'accepted',
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+        select: { senderId: true, receiverId: true },
+      });
+      friendIds = friends.map((f: any) => (f.senderId === userId ? f.receiverId : f.senderId));
+    }
+
+    // Only notify accepted friends
+    for (const fId of friendIds) {
+      io.to(fId).emit('user:online', { userId, status: 'online' });
+    }
+    return;
+  }
+
+  // 'everyone'
+  io.emit('user:online', { userId, status: 'online' });
+};
+
 export const setupSocketHandlers = (io: any) => {
+  ioInstance = io;
+
   // Authentication middleware
-  io.use((socket: Socket, next: (err?: Error) => void) => {
+  io.use(async (socket: Socket, next: (err?: Error) => void) => {
     try {
       const rawToken =
         socket.handshake.auth?.token ||
@@ -73,6 +138,17 @@ export const setupSocketHandlers = (io: any) => {
         : String(rawToken);
 
       const payload = jwtUtils.verifyToken(token);
+
+      if (prisma.user?.findUnique) {
+        const user = await prisma.user.findUnique({
+          where: { id: payload.userId },
+          select: { id: true },
+        });
+        if (!user) {
+          return next(new Error('Authentication error: User not found'));
+        }
+      }
+
       socket.data.userId = payload.userId;
       next();
     } catch (_err) {
@@ -89,17 +165,30 @@ export const setupSocketHandlers = (io: any) => {
 
     try {
       await userService.updateUserStatus(authenticatedUserId, 'online');
-      io.emit('user:online', { userId: authenticatedUserId, status: 'online' });
+      await broadcastPresence(io, authenticatedUserId, true);
     } catch (err) {
       console.error('Error updating user online status:', err);
     }
 
     // Optional user:login event support for frontend compatibility
     socket.on('user:login', async (_data: { userId?: string }) => {
-      addSocketUser(authenticatedUserId, socket.id);
-      socket.join(authenticatedUserId);
-      await userService.updateUserStatus(authenticatedUserId, 'online');
-      io.emit('user:online', { userId: authenticatedUserId, status: 'online' });
+      try {
+        addSocketUser(authenticatedUserId, socket.id);
+        socket.join(authenticatedUserId);
+        await userService.updateUserStatus(authenticatedUserId, 'online');
+        await broadcastPresence(io, authenticatedUserId, true);
+      } catch (err) {
+        console.error('Error handling user:login:', err);
+      }
+    });
+
+    // Real-time privacy setting sync
+    socket.on('privacy:update', async () => {
+      try {
+        await broadcastPresence(io, authenticatedUserId, true);
+      } catch (err) {
+        console.error('Error handling privacy:update event:', err);
+      }
     });
 
     // Send message
@@ -111,7 +200,9 @@ export const setupSocketHandlers = (io: any) => {
         content?: string;
         parentMessageId?: string;
         attachmentUrl?: string;
-        attachmentType?: 'image' | 'video';
+        attachmentType?: 'image' | 'video' | 'audio' | 'document' | string;
+        attachmentMetadata?: string | Record<string, any>;
+        clientMessageId?: string;
       }) => {
         try {
           const cleanContent = data.content || '';
@@ -120,6 +211,11 @@ export const setupSocketHandlers = (io: any) => {
             return;
           }
 
+          const rawMetadata =
+            typeof data.attachmentMetadata === 'object'
+              ? JSON.stringify(data.attachmentMetadata)
+              : data.attachmentMetadata;
+
           // Enforce authenticated userId as sender
           const message = await messageService.sendMessage(
             data.conversationId,
@@ -127,10 +223,15 @@ export const setupSocketHandlers = (io: any) => {
             cleanContent,
             data.parentMessageId,
             data.attachmentUrl,
-            data.attachmentType
+            data.attachmentType,
+            rawMetadata
           );
 
-          io.to(data.conversationId).emit('message:new', message);
+          const messagePayload = data.clientMessageId
+            ? { ...message, clientMessageId: data.clientMessageId }
+            : message;
+
+          io.to(data.conversationId).emit('message:new', messagePayload);
         } catch (error: any) {
           socket.emit('error', { message: error?.message || 'Failed to send message' });
         }
@@ -268,6 +369,17 @@ export const setupSocketHandlers = (io: any) => {
             callId,
             reason: 'invalid_target',
             message: 'Cannot call yourself or invalid user',
+          });
+          return;
+        }
+
+        // Verify block and privacy permissions
+        const callPermission = await authorizationService.canCall(authenticatedUserId, data.targetUserId);
+        if (!callPermission.allowed) {
+          socket.emit('call:failed', {
+            callId,
+            reason: 'prohibited',
+            message: callPermission.reason || 'Cannot initiate call to this user',
           });
           return;
         }
@@ -502,6 +614,83 @@ export const setupSocketHandlers = (io: any) => {
     );
 
     // ==========================================
+    // FRIEND & BLOCK REAL-TIME EVENTS
+    // ==========================================
+
+    socket.on('friend:request', (data: { targetUserId: string; request: any }) => {
+      if (data.targetUserId) {
+        socket.to(data.targetUserId).emit('friend:request', {
+          senderId: authenticatedUserId,
+          request: data.request,
+        });
+      }
+    });
+
+    socket.on('friend:accept', (data: { targetUserId: string; request: any }) => {
+      if (data.targetUserId) {
+        socket.to(data.targetUserId).emit('friend:accept', {
+          userId: authenticatedUserId,
+          request: data.request,
+        });
+      }
+    });
+
+    socket.on('friend:reject', (data: { targetUserId: string; requestId: string }) => {
+      if (data.targetUserId) {
+        socket.to(data.targetUserId).emit('friend:reject', {
+          userId: authenticatedUserId,
+          requestId: data.requestId,
+        });
+      }
+    });
+
+    socket.on('friend:cancel', (data: { targetUserId: string; requestId: string }) => {
+      if (data.targetUserId) {
+        socket.to(data.targetUserId).emit('friend:cancel', {
+          senderId: authenticatedUserId,
+          requestId: data.requestId,
+        });
+      }
+    });
+
+    socket.on('friend:remove', (data: { targetUserId: string }) => {
+      if (data.targetUserId) {
+        socket.to(data.targetUserId).emit('friend:remove', {
+          userId: authenticatedUserId,
+        });
+      }
+    });
+
+    socket.on('user:block', async (data: { targetUserId: string }) => {
+      if (data.targetUserId) {
+        const activeCallId = userActiveCalls.get(authenticatedUserId);
+        if (activeCallId) {
+          const session = activeCallSessions.get(activeCallId);
+          if (
+            session &&
+            (session.callerId === data.targetUserId || session.receiverId === data.targetUserId)
+          ) {
+            activeCallSessions.delete(activeCallId);
+            userActiveCalls.delete(authenticatedUserId);
+            userActiveCalls.delete(data.targetUserId);
+            io.to(data.targetUserId).emit('call:ended', {
+              callId: activeCallId,
+              reason: 'user_blocked',
+            });
+            socket.emit('call:ended', {
+              callId: activeCallId,
+              reason: 'user_blocked',
+            });
+          }
+        }
+
+        socket.to(data.targetUserId).emit('user:blocked', {
+          blockerId: authenticatedUserId,
+        });
+      }
+    });
+
+    // ==========================================
     // USER DISCONNECT
     // ==========================================
 
@@ -538,7 +727,7 @@ export const setupSocketHandlers = (io: any) => {
 
         try {
           await userService.updateUserStatus(removal.userId, 'offline');
-          io.emit('user:offline', { userId: removal.userId });
+          await broadcastPresence(io, removal.userId, false);
         } catch (err) {
           console.error('Error updating user status on disconnect:', err);
         }

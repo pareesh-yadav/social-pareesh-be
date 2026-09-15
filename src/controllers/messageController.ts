@@ -22,21 +22,29 @@ export const messageController = {
 
   sendMessage: async (req: Request, res: Response): Promise<Response> => {
     const { conversationId } = req.params;
-    const { content, parentMessageId } = req.body;
+    const { content, parentMessageId, attachmentUrl, attachmentType, attachmentMetadata } = req.body;
     const conversationIdValue = Array.isArray(conversationId) ? conversationId[0] : conversationId;
 
-    if (!content) {
+    if (!content && !attachmentUrl) {
       return res.status(400).json({
         success: false,
-        error: 'Content is required',
+        error: 'Content or attachment is required',
       });
     }
+
+    const rawMetadata =
+      typeof attachmentMetadata === 'object'
+        ? JSON.stringify(attachmentMetadata)
+        : attachmentMetadata;
 
     const message = await messageService.sendMessage(
       conversationIdValue,
       req.userId!,
-      content,
-      parentMessageId
+      content || '',
+      parentMessageId,
+      attachmentUrl,
+      attachmentType,
+      rawMetadata
     );
 
     return res.status(201).json({

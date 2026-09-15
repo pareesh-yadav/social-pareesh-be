@@ -12,6 +12,7 @@ import messageRoutes from './routes/messageRoutes';
 import conversationRoutes from './routes/conversationRoutes';
 import friendRoutes from './routes/friendRoutes';
 import callRoutes from './routes/callRoutes';
+import mediaRoutes from './routes/mediaRoutes';
 
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local' });
@@ -64,6 +65,7 @@ export const createApp = () => {
   app.use('/api/conversations', conversationRoutes);
   app.use('/api/friends', friendRoutes);
   app.use('/api/calls', callRoutes);
+  app.use('/api/media', mediaRoutes);
 
   app.get('/', (_req, res) => res.json({
     success: true,

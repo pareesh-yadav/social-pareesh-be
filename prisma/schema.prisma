@@ -19,6 +19,11 @@ model User {
   callsMade     CallLog[] @relation("CallsMade")
   callsReceived CallLog[] @relation("CallsReceived")
   lastSeen      DateTime?
+  privacyLastSeen       String    @default("everyone") // everyone, friends, nobody
+  privacyOnlineStatus   String    @default("everyone") // everyone, friends, nobody
+  privacyReadReceipts   Boolean   @default(true)
+  privacyFriendRequests String    @default("everyone") // everyone, friends_of_friends, nobody
+  privacyCalls          String    @default("everyone") // everyone, friends, nobody
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -29,6 +34,10 @@ model User {
   conversations2  Conversation[]  @relation("user2")
   sentMessages    Message[]       @relation("sender")
   readReceipts    ReadReceipt[]
+  blocksCreated   Block[]         @relation("BlocksCreated")
+  blocksReceived  Block[]         @relation("BlocksReceived")
+  reportsMade     Report[]        @relation("ReportsMade")
+  reportsReceived Report[]        @relation("ReportsReceived")
 
   @@index([email])
   @@index([username])
@@ -75,6 +84,7 @@ model Message {
   content        String
   attachmentUrl   String?
   attachmentType  String?
+  attachmentMetadata String?
   editedAt       DateTime?
   deletedAt      DateTime?
   parentMessage  Message?    @relation("replies", fields: [parentMessageId], references: [id], onDelete: SetNull)
@@ -117,4 +127,31 @@ model CallLog {
   @@index([callerId])
   @@index([receiverId])
   @@index([startedAt])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("BlocksCreated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  reportedId String
+  reason     String   // Spam, Harassment, Inappropriate content, Fake account, Other
+  details    String?
+  createdAt  DateTime @default(now())
+  reporter   User     @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  reported   User     @relation("ReportsReceived", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  @@index([reporterId])
+  @@index([reportedId])
 }
