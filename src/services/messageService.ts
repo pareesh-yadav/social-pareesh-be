@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { authorizationService } from './authorizationService';
 import { NotFoundError, AuthorizationError, ValidationError } from '../utils/errors';
 
 export const messageService = {
@@ -38,8 +39,9 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
-        attachmentUrl: true,  // <-- ADDED THIS
-        attachmentType: true, // <-- ADDED THIS
+        attachmentUrl: true,
+        attachmentType: true,
+        attachmentMetadata: true,
         readReceipts: {
           select: { userId: true },
         },
@@ -72,12 +74,20 @@ export const messageService = {
     content: string = "",
     parentMessageId?: string,
     attachmentUrl?: string,
-    attachmentType?: 'image' | 'video'
+    attachmentType?: 'image' | 'video' | 'audio' | 'document' | string,
+    attachmentMetadata?: string
   ) => {
     // 1. Strict Server-Side Validation
     const safeContent = content.trim();
     if (!safeContent && !attachmentUrl) {
       throw new ValidationError('Message must have text content or an attachment.');
+    }
+
+    if (attachmentType) {
+      const allowed = ['image', 'video', 'audio', 'document'];
+      if (!allowed.includes(attachmentType.toLowerCase())) {
+        throw new ValidationError('Invalid attachment type. Allowed: image, video, audio, document');
+      }
     }
 
     // Verify conversation exists
@@ -97,6 +107,13 @@ export const messageService = {
       throw new AuthorizationError(
         'You are not part of this conversation'
       );
+    }
+
+    // Verify neither user has blocked the other
+    const peerId = conversation.user1Id === senderId ? conversation.user2Id : conversation.user1Id;
+    const canInteract = await authorizationService.canInteract(senderId, peerId);
+    if (!canInteract.allowed) {
+      throw new ValidationError('Cannot send messages to this user because they are blocked');
     }
 
     // Verify parent message exists if replying
@@ -123,6 +140,7 @@ export const messageService = {
         parentMessageId,
         attachmentUrl: attachmentUrl || null,
         attachmentType: attachmentType || null,
+        attachmentMetadata: attachmentMetadata || null,
       },
       select: {
         id: true,
@@ -133,8 +151,9 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
-        attachmentUrl: true,  // <-- ADDED THIS
-        attachmentType: true, // <-- ADDED THIS
+        attachmentUrl: true,
+        attachmentType: true,
+        attachmentMetadata: true,
         readReceipts: {
           select: { userId: true },
         },
@@ -196,8 +215,9 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
-        attachmentUrl: true,  // <-- ADDED THIS
-        attachmentType: true, // <-- ADDED THIS
+        attachmentUrl: true,
+        attachmentType: true,
+        attachmentMetadata: true,
         readReceipts: {
           select: { userId: true },
         },
@@ -275,8 +295,9 @@ export const messageService = {
         editedAt: true,
         deletedAt: true,
         parentMessageId: true,
-        attachmentUrl: true,  // <-- ADDED THIS
-        attachmentType: true, // <-- ADDED THIS
+        attachmentUrl: true,
+        attachmentType: true,
+        attachmentMetadata: true,
         readReceipts: {
           select: { userId: true },
         },

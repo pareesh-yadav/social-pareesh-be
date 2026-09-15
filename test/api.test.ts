@@ -9,6 +9,8 @@ const prisma = {
   conversation: { findUnique: jest.fn(), update: jest.fn() },
   message: { findMany: jest.fn(), count: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
   readReceipt: { upsert: jest.fn() },
+  block: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() },
+  report: { create: jest.fn() },
 };
 
 jest.mock('../src/config/database', () => ({ prisma }));
@@ -198,5 +200,20 @@ describe('friends, calls, and protected routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.items[0].otherUser.username).toBe('bob');
     expect(prisma.callLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ include: expect.any(Object) }));
+  });
+
+  test('rejects /api/media/imagekit/auth without auth', async () => {
+    const response = await request(app).get('/api/media/imagekit/auth');
+    expect(response.status).toBe(401);
+  });
+
+  test('generates ImageKit upload authentication parameters for authenticated user', async () => {
+    const response = await request(app).get('/api/media/imagekit/auth').set('Authorization', `Bearer ${tokenFor()}`);
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data).toHaveProperty('token');
+    expect(response.body.data).toHaveProperty('expire');
+    expect(response.body.data).toHaveProperty('signature');
+    expect(response.body.data).toHaveProperty('publicKey');
   });
 });

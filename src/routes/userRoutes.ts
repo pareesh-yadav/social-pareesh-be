@@ -6,10 +6,13 @@ const router = Router();
 
 router.get('/search', authMiddleware, userController.searchUsers);
 router.get('/online', authMiddleware, userController.getOnlineUsers);
+router.get('/me/privacy', authMiddleware, userController.getPrivacySettings);
+router.patch('/me/privacy', authMiddleware, userController.updatePrivacySettings);
+router.delete('/me', authMiddleware, userController.deleteAccount);
+router.post('/:id/report', authMiddleware, userController.reportUser);
 router.get('/:id', authMiddleware, userController.getUser);
 router.get('/:id/status', authMiddleware, userController.getUserStatus);
 router.patch('/:id', authMiddleware, userController.updateProfile);
 router.patch('/:id/changePassword', authMiddleware, userController.changePassword);
-
 
 export default router;

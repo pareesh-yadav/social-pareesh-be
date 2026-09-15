@@ -1,6 +1,30 @@
 import { prisma } from '../config/database';
 import { NotFoundError, AuthorizationError, ConflictError } from '../utils/errors';
 
+const formatUserWithPrivacy = (u: any, isSelf: boolean) => {
+  if (!u || isSelf) return u;
+  const onlinePrivacy = u.privacyOnlineStatus || 'everyone';
+  const lastSeenPrivacy = u.privacyLastSeen || 'everyone';
+  return {
+    ...u,
+    status: onlinePrivacy === 'nobody' ? 'offline' : u.status,
+    lastSeen: lastSeenPrivacy === 'nobody' ? null : u.lastSeen,
+  };
+};
+
+const userSelectFields = {
+  id: true,
+  username: true,
+  email: true,
+  profilePicUrl: true,
+  status: true,
+  bio: true,
+  createdAt: true,
+  lastSeen: true,
+  privacyOnlineStatus: true,
+  privacyLastSeen: true,
+};
+
 export const conversationService = {
   getConversations: async (userId: string) => {
     const conversations = await prisma.conversation.findMany({
@@ -12,26 +36,10 @@ export const conversationService = {
       },
       include: {
         user1: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            profilePicUrl: true,
-            status: true,
-            bio: true,
-            createdAt: true,
-          },
+          select: userSelectFields,
         },
         user2: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            profilePicUrl: true,
-            status: true,
-            bio: true,
-            createdAt: true,
-          },
+          select: userSelectFields,
         },
         messages: {
           take: 1,
@@ -72,8 +80,8 @@ export const conversationService = {
           id: conv.id,
           user1Id: conv.user1Id,
           user2Id: conv.user2Id,
-          user1: conv.user1,
-          user2: conv.user2,
+          user1: formatUserWithPrivacy(conv.user1, conv.user1Id === userId),
+          user2: formatUserWithPrivacy(conv.user2, conv.user2Id === userId),
           lastMessage: conv.messages[0] || null,
           lastMessageTime: conv.messages[0]?.createdAt || null,
           unreadCount,
@@ -139,24 +147,10 @@ export const conversationService = {
         },
         include: {
           user1: {
-            select: {
-              id: true,
-              username: true,
-              email: true,
-              profilePicUrl: true,
-              status: true,
-              bio: true,
-            },
+            select: userSelectFields,
           },
           user2: {
-            select: {
-              id: true,
-              username: true,
-              email: true,
-              profilePicUrl: true,
-              status: true,
-              bio: true,
-            },
+            select: userSelectFields,
           },
         },
       });
@@ -166,8 +160,8 @@ export const conversationService = {
       id: conversation.id,
       user1Id: conversation.user1Id,
       user2Id: conversation.user2Id,
-      user1: conversation.user1,
-      user2: conversation.user2,
+      user1: formatUserWithPrivacy(conversation.user1, conversation.user1Id === userId),
+      user2: formatUserWithPrivacy(conversation.user2, conversation.user2Id === userId),
       lastMessage: null,
       lastMessageTime: null,
       unreadCount: 0,
@@ -179,24 +173,10 @@ export const conversationService = {
       where: { id: conversationId },
       include: {
         user1: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            profilePicUrl: true,
-            status: true,
-            bio: true,
-          },
+          select: userSelectFields,
         },
         user2: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            profilePicUrl: true,
-            status: true,
-            bio: true,
-          },
+          select: userSelectFields,
         },
       },
     });
@@ -219,8 +199,8 @@ export const conversationService = {
       id: conversation.id,
       user1Id: conversation.user1Id,
       user2Id: conversation.user2Id,
-      user1: conversation.user1,
-      user2: conversation.user2,
+      user1: formatUserWithPrivacy(conversation.user1, conversation.user1Id === userId),
+      user2: formatUserWithPrivacy(conversation.user2, conversation.user2Id === userId),
     };
   },
 

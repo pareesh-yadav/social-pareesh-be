@@ -77,4 +77,64 @@ export const friendController = {
       message: 'Friend removed',
     });
   },
+
+  cancelRequest: async (req: Request, res: Response): Promise<Response> => {
+    const { id } = req.params;
+    const requestId = Array.isArray(id) ? id[0] : id;
+
+    await friendService.cancelFriendRequest(requestId, req.userId!);
+
+    return res.json({
+      success: true,
+      message: 'Friend request cancelled',
+    });
+  },
+
+  getSentRequests: async (req: Request, res: Response): Promise<Response> => {
+    const requests = await friendService.getSentRequests(req.userId!);
+
+    return res.json({
+      success: true,
+      data: requests,
+    });
+  },
+
+  blockUser: async (req: Request, res: Response): Promise<Response> => {
+    const targetUserId = req.body.userId || req.body.targetUserId || req.params.id;
+
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    await friendService.blockUser(req.userId!, targetUserId);
+
+    return res.json({
+      success: true,
+      message: 'User blocked successfully',
+    });
+  },
+
+  unblockUser: async (req: Request, res: Response): Promise<Response> => {
+    const targetUserId = req.params.id || req.body.userId;
+
+    if (!targetUserId) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    await friendService.unblockUser(req.userId!, targetUserId);
+
+    return res.json({
+      success: true,
+      message: 'User unblocked successfully',
+    });
+  },
+
+  getBlockedUsers: async (req: Request, res: Response): Promise<Response> => {
+    const users = await friendService.getBlockedUsers(req.userId!);
+
+    return res.json({
+      success: true,
+      data: users,
+    });
+  },
 };

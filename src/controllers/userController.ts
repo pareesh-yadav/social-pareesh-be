@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { userService } from '../services/userService';
 import { validate, updateProfileSchema, changePasswordSchema } from '../utils/validators';
 import { AuthorizationError } from '../utils/errors';
+import { getIO, isUserConnected, broadcastPresence } from '../utils/socketHandler';
 
 export const userController = {
   getUser: async (req: Request, res: Response): Promise<Response> => {
@@ -68,7 +69,7 @@ export const userController = {
 
   getUserStatus: async (req: Request, res: Response): Promise<Response> => {
     const { id } = req.params;
-    const status = await userService.getUserStatus(Array.isArray(id) ? id[0] : id);
+    const status = await userService.getUserStatus(Array.isArray(id) ? id[0] : id, req.userId);
 
     return res.json({
       success: true,
@@ -76,8 +77,8 @@ export const userController = {
     });
   },
 
-  getOnlineUsers: async (_req: Request, res: Response): Promise<Response> => {
-    const users = await userService.getOnlineUsers();
+  getOnlineUsers: async (req: Request, res: Response): Promise<Response> => {
+    const users = await userService.getOnlineUsers(req.userId);
 
     return res.json({
       success: true,
@@ -105,5 +106,60 @@ export const userController = {
       success: true,
       message: response.message || 'Password changed successfully',
     });
-  }
+  },
+
+  reportUser: async (req: Request, res: Response): Promise<Response> => {
+    const { id } = req.params;
+    const targetUserId = Array.isArray(id) ? id[0] : id;
+    const { reason, details } = req.body;
+
+    const report = await userService.reportUser(req.userId!, targetUserId, reason, details);
+
+    return res.status(201).json({
+      success: true,
+      data: report,
+      message: 'Report submitted successfully. Our team will review it.',
+    });
+  },
+
+  getPrivacySettings: async (req: Request, res: Response): Promise<Response> => {
+    const settings = await userService.getPrivacySettings(req.userId!);
+
+    return res.json({
+      success: true,
+      data: settings,
+    });
+  },
+
+  updatePrivacySettings: async (req: Request, res: Response): Promise<Response> => {
+    const settings = await userService.updatePrivacySettings(req.userId!, req.body);
+
+    // Sync presence in real time via Socket.IO
+    try {
+      const io = getIO();
+      if (io && req.userId) {
+        const isOnline = isUserConnected(req.userId);
+        await broadcastPresence(io, req.userId, isOnline);
+      }
+    } catch (e) {
+      console.warn('Could not broadcast presence update:', e);
+    }
+
+    return res.json({
+      success: true,
+      data: settings,
+      message: 'Privacy settings updated successfully',
+    });
+  },
+
+  deleteAccount: async (req: Request, res: Response): Promise<Response> => {
+    const { password } = req.body;
+
+    await userService.deleteAccountWithPassword(req.userId!, password);
+
+    return res.json({
+      success: true,
+      message: 'Account deleted successfully',
+    });
+  },
 };
