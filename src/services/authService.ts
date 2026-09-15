@@ -21,7 +21,7 @@ const createVerificationOtp = () => {
 };
 
 export const authService = {
- register: async (username: string, email: string, password: string) => {
+  register: async (username: string, email: string, password: string) => {
     const normalizedEmail = normalizeEmail(email);
     const normalizedUsername = username.trim();
 
@@ -169,7 +169,7 @@ export const authService = {
     });
 
     if (!user) {
-      throw new AuthenticationError('Invalid email or password');
+      throw new AuthenticationError('Account does not exist. Please register first.');
     }
 
     if (user.status === 'pending_verification') {
@@ -183,7 +183,7 @@ export const authService = {
     );
 
     if (!isPasswordValid) {
-      throw new AuthenticationError('Invalid email or password');
+      throw new AuthenticationError('Incorrect password.');
     }
 
     // Generate tokens

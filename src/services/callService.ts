@@ -53,7 +53,7 @@ export const callService = {
     };
   },
 
-  initiateCall: async (callerId: string, receiverId: string, isVideo: boolean) => {
+  initiateCall: async (callerId: string, receiverId: string, isVideo: boolean, callId?: string) => {
     if (callerId === receiverId) {
       throw new ValidationError('You cannot call yourself');
     }
@@ -69,6 +69,7 @@ export const callService = {
 
     return await prisma.callLog.create({
       data: {
+        ...(callId ? { id: callId } : {}),
         callerId,
         receiverId,
         type: isVideo ? 'video' : 'audio',
@@ -77,16 +78,21 @@ export const callService = {
     });
   },
 
-  acceptCall: async (callerId: string, receiverId: string) => {
-    // Find the latest ongoing call between these two users
-    const activeCall = await prisma.callLog.findFirst({
-      where: {
-        callerId,
-        receiverId,
-        status: 'ongoing',
-      },
-      orderBy: { startedAt: 'desc' },
-    });
+  acceptCall: async (callerId: string, receiverId: string, callId?: string) => {
+    let activeCall = null;
+    if (callId) {
+      activeCall = await prisma.callLog.findUnique({ where: { id: callId } });
+    }
+    if (!activeCall) {
+      activeCall = await prisma.callLog.findFirst({
+        where: {
+          callerId,
+          receiverId,
+          status: 'ongoing',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+    }
 
     if (!activeCall) {
       throw new NotFoundError('No active incoming call found to accept');
@@ -98,26 +104,91 @@ export const callService = {
     });
   },
 
-  endCall: async (callerId: string, receiverId: string) => {
-    // Find the latest active call (either ringing or in-progress)
-    const activeCall = await prisma.callLog.findFirst({
-      where: {
-        callerId,
-        receiverId,
-        status: { in: ['ongoing', 'in_progress'] },
+  rejectCall: async (callerId: string, receiverId: string, callId?: string) => {
+    let activeCall = null;
+    if (callId) {
+      activeCall = await prisma.callLog.findUnique({ where: { id: callId } });
+    }
+    if (!activeCall) {
+      activeCall = await prisma.callLog.findFirst({
+        where: {
+          callerId,
+          receiverId,
+          status: 'ongoing',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+    }
+
+    if (!activeCall) return null;
+
+    return await prisma.callLog.update({
+      where: { id: activeCall.id },
+      data: {
+        status: 'rejected',
+        endedAt: new Date(),
+        duration: 0,
       },
-      orderBy: { startedAt: 'desc' },
     });
+  },
+
+  cancelCall: async (callerId: string, receiverId: string, callId?: string) => {
+    let activeCall = null;
+    if (callId) {
+      activeCall = await prisma.callLog.findUnique({ where: { id: callId } });
+    }
+    if (!activeCall) {
+      activeCall = await prisma.callLog.findFirst({
+        where: {
+          callerId,
+          receiverId,
+          status: 'ongoing',
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+    }
+
+    if (!activeCall) return null;
+
+    return await prisma.callLog.update({
+      where: { id: activeCall.id },
+      data: {
+        status: 'missed',
+        endedAt: new Date(),
+        duration: 0,
+      },
+    });
+  },
+
+  endCall: async (callerId: string, receiverId: string, callId?: string) => {
+    let activeCall = null;
+    if (callId) {
+      activeCall = await prisma.callLog.findUnique({ where: { id: callId } });
+    }
+    if (!activeCall) {
+      // Find the latest active call (either ringing or in-progress)
+      activeCall = await prisma.callLog.findFirst({
+        where: {
+          OR: [
+            { callerId, receiverId },
+            { callerId: receiverId, receiverId: callerId },
+          ],
+          status: { in: ['ongoing', 'in_progress'] },
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+    }
 
     // If no active call is found, silently return (sockets often fire multiple disconnects)
     if (!activeCall) return null;
 
     const endedAt = new Date();
-    const durationInSeconds = Math.floor(
-      (endedAt.getTime() - activeCall.startedAt.getTime()) / 1000
+    const durationInSeconds = Math.max(
+      0,
+      Math.floor((endedAt.getTime() - activeCall.startedAt.getTime()) / 1000)
     );
 
-    // If the call was never accepted ('in_progress'), it counts as missed or rejected
+    // If the call was never accepted ('in_progress'), it counts as missed
     const finalStatus = activeCall.status === 'in_progress' ? 'completed' : 'missed';
 
     return await prisma.callLog.update({
