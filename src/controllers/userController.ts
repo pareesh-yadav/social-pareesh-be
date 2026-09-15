@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/userService';
 import { validate, updateProfileSchema, changePasswordSchema } from '../utils/validators';
+import { AuthorizationError } from '../utils/errors';
 
 export const userController = {
   getUser: async (req: Request, res: Response): Promise<Response> => {
@@ -42,6 +43,12 @@ export const userController = {
   },
 
   updateProfile: async (req: Request, res: Response): Promise<Response> => {
+    const { id } = req.params;
+    const targetUserId = Array.isArray(id) ? id[0] : id;
+    if (targetUserId && targetUserId !== req.userId) {
+      throw new AuthorizationError('You can only update your own profile');
+    }
+
     const data = validate(updateProfileSchema, req.body);
     const normalizedData = {
       ...(data.username !== undefined ? { username: data.username } : {}),
@@ -79,10 +86,18 @@ export const userController = {
   },
 
   changePassword: async (req: Request, res: Response): Promise<Response> => {
-    const {id: userId} = req.params;
-    const { currentPassword, newPassword } = req.body;
+    const { id } = req.params;
+    const targetUserId = Array.isArray(id) ? id[0] : id;
+    if (targetUserId && targetUserId !== req.userId) {
+      throw new AuthorizationError('You can only change your own password');
+    }
 
-   const data = validate(changePasswordSchema, { userId, oldPassword:currentPassword, newPassword});
+    const { currentPassword, newPassword } = req.body;
+    const data = validate(changePasswordSchema, {
+      userId: req.userId!,
+      oldPassword: currentPassword,
+      newPassword,
+    });
 
     const response = await userService.changePassword(data.userId!, data.oldPassword, data.newPassword);
 

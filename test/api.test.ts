@@ -122,6 +122,38 @@ describe('authentication and password security', () => {
     const expired = await request(app).patch('/api/auth/reset-password').send({ email: 'alice@example.com', otp: '123456', password: 'NewStrong1!' });
     expect(expired.status).toBe(401);
   });
+
+  test('rejects weak password on reset password', async () => {
+    const response = await request(app).patch('/api/auth/reset-password').send({
+      email: 'alice@example.com',
+      otp: '123456',
+      password: 'weak',
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+});
+
+describe('authorization and IDOR protection', () => {
+  test('rejects changing another user password (IDOR protection)', async () => {
+    const response = await request(app)
+      .patch('/api/users/user-2/changePassword')
+      .set('Authorization', `Bearer ${tokenFor('user-1')}`)
+      .send({ currentPassword: 'OldPassword1!', newPassword: 'NewPassword1!' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatch(/only change your own password/i);
+  });
+
+  test('rejects updating another user profile (IDOR protection)', async () => {
+    const response = await request(app)
+      .patch('/api/users/user-2')
+      .set('Authorization', `Bearer ${tokenFor('user-1')}`)
+      .send({ bio: 'Hacked bio' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatch(/only update your own profile/i);
+  });
 });
 
 describe('friends, calls, and protected routes', () => {

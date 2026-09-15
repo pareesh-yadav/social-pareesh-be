@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/authService';
-import { validate, registerSchema, loginSchema } from '../utils/validators';
+import { validate, registerSchema, loginSchema, resetPasswordSchema } from '../utils/validators';
 
 export const authController = {
   register: async (req: Request, res: Response): Promise<Response> => {
@@ -109,18 +109,13 @@ export const authController = {
   },
 
   resetPassword: async (req: Request, res: Response): Promise<Response> => {
-    const email = String(req.body?.email ?? '').trim().toLowerCase();
-    const otp = String(req.body?.otp ?? '').trim();
-    const password = String(req.body?.password ?? '');
+    const { email, otp, newPassword } = validate(resetPasswordSchema, {
+      email: req.body?.email,
+      otp: req.body?.otp,
+      newPassword: req.body?.password ?? req.body?.newPassword,
+    });
 
-    if (!email || !otp || !password) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email, OTP, and new password are required',
-      });
-    }
-
-    await authService.resetPassword(email, otp, password);
+    await authService.resetPassword(email, otp, newPassword);
 
     return res.status(200).json({
       success: true,

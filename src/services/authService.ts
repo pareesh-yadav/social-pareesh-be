@@ -75,6 +75,8 @@ export const authService = {
       to: user.email,
       subject: 'Verify your email address',
       html: message,
+      otp,
+      toName: user.username,
     }).catch(console.error);
 
     // 6. Return response WITHOUT JWT tokens (force them to verify the OTP first)
@@ -152,6 +154,8 @@ export const authService = {
       to: user.email,
       subject: 'Your email verification code',
       html: `<p>Your verification code is <strong>${otp}</strong>. It expires in 10 minutes.</p>`,
+      otp,
+      toName: user.username,
     });
 
     return true;
@@ -267,7 +271,7 @@ export const authService = {
 
     // 2. Save hashed OTP to database
     await prisma.user.update({
-      where: { email },
+      where: { id: user.id },
       data: {
         resetPasswordToken: hashedOtp,
         resetPasswordExpire,
@@ -297,11 +301,13 @@ export const authService = {
         to: user.email,
         subject: 'Your Password Reset Code',
         html: message,
+        otp,
+        toName: user.username,
       });
       return true;
     } catch (error) {
       await prisma.user.update({
-        where: { email: normalizedEmail },
+        where: { id: user.id },
         data: { resetPasswordToken: null, resetPasswordExpire: null },
       });
       throw new Error('Email could not be sent');

@@ -24,7 +24,9 @@ const allowedOrigins = (
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const corsOriginHandler = (
+import rateLimit from 'express-rate-limit';
+
+export const corsOriginHandler = (
   origin: string | undefined,
   callback: (err: Error | null, allow?: boolean | string) => void
 ) => {
@@ -36,6 +38,17 @@ const corsOriginHandler = (
   callback(new Error(`Origin ${origin} not allowed by CORS`));
 };
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'test' ? 1000 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many requests, please try again later.',
+  },
+});
+
 export const createApp = () => {
   const app = express();
 
@@ -45,7 +58,7 @@ export const createApp = () => {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api', messageRoutes);
   app.use('/api/conversations', conversationRoutes);

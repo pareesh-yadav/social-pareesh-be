@@ -77,7 +77,7 @@ export const messageService = {
     // 1. Strict Server-Side Validation
     const safeContent = content.trim();
     if (!safeContent && !attachmentUrl) {
-      throw new Error('Message must have text content or an attachment.');
+      throw new ValidationError('Message must have text content or an attachment.');
     }
 
     // Verify conversation exists

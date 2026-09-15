@@ -3,13 +3,14 @@ import { Server } from 'socket.io';
 
 import { connectDB, disconnectDB } from './config/database';
 import { setupSocketHandlers } from './utils/socketHandler';
-import { app } from './app';
+import { app, corsOriginHandler } from './app';
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: true,
+    origin: corsOriginHandler,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 

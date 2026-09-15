@@ -1,11 +1,19 @@
 import { z } from 'zod';
 
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{6,50}$/;
+const passwordSchema = z
+  .string()
+  .trim()
+  .min(6, 'Password must be at least 6 characters long')
+  .max(50, 'Password must not exceed 50 characters')
+  .refine((password) => /[A-Z]/.test(password), 'Password must contain at least one uppercase letter')
+  .refine((password) => /[a-z]/.test(password), 'Password must contain at least one lowercase letter')
+  .refine((password) => /\d/.test(password), 'Password must contain at least one number')
+  .refine((password) => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password), 'Password must contain at least one special character');
 
 export const registerSchema = z.object({
   username: z.string().trim().min(3).max(50),
   email: z.string().trim().email(),
-  password: z.string().trim().min(6).max(50).refine((value) => passwordPattern.test(value), 'Password must contain uppercase, lowercase, number, and special character'),
+  password: passwordSchema,
 });
 
 export const loginSchema = z.object({
@@ -29,16 +37,6 @@ export const friendRequestSchema = z.object({
   receiverId: z.string(),
 });
 
-const passwordSchema = z
-  .string()
-  .trim()
-  .min(6, 'Password must be at least 6 characters long')
-  .max(50, 'Password must not exceed 50 characters')
-  .refine((password) => /[A-Z]/.test(password), 'Password must contain at least one uppercase letter')
-  .refine((password) => /[a-z]/.test(password), 'Password must contain at least one lowercase letter')
-  .refine((password) => /\d/.test(password), 'Password must contain at least one number')
-  .refine((password) => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password), 'Password must contain at least one special character');
-
 export const changePasswordSchema = z.object({
   userId: z.string(),
   oldPassword: z.string().min(1, 'Current password is required'),
@@ -54,7 +52,7 @@ export const changePasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   email: z.string().trim().email('Invalid email address'),
   newPassword: passwordSchema,
-  token: z.string().min(1, 'Reset token is required'),
+  otp: z.string().trim().min(1, 'Reset OTP is required'),
 });
 
 export const validate = <T>(schema: z.Schema<T>, data: unknown): T => {
