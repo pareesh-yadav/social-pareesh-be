@@ -19,7 +19,7 @@ dotenv.config({ path: '.env.local' });
 
 const allowedOrigins = (
   process.env.CORS_ORIGIN ||
-  'http://localhost:5173,http://localhost:5174,http://localhost:5175,https://chatly-drab.vercel.app,https://social-pareesh-production.up.railway.app'
+  'http://localhost:5173,https://chatly-x.vercel.app'
 )
   .split(',')
   .map((origin) => origin.trim())
