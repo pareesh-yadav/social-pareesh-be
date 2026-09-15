@@ -17,13 +17,23 @@ import mediaRoutes from './routes/mediaRoutes';
 dotenv.config({ path: '.env' });
 dotenv.config({ path: '.env.local' });
 
-const allowedOrigins = (
-  process.env.CORS_ORIGIN ||
-  'http://localhost:5173,https://chatly-x.vercel.app'
-)
-  .split(',')
-  .map((origin) => origin.trim())
+const envOrigins = [
+  process.env.CORS_ORIGIN,
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+]
+  .filter(Boolean)
+  .flatMap((str) => (str ? str.split(',') : []))
+  .map((o) => o.trim().replace(/\/$/, ''))
   .filter(Boolean);
+
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://chatly-x.vercel.app'
+];
+
+const allowedOrigins = Array.from(new Set([...envOrigins, ...defaultOrigins]));
 
 import rateLimit from 'express-rate-limit';
 
@@ -31,12 +41,40 @@ export const corsOriginHandler = (
   origin: string | undefined,
   callback: (err: Error | null, allow?: boolean | string) => void
 ) => {
-  if (!origin || allowedOrigins.includes(origin) || /^(https?:\/\/)(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
-    callback(null, origin || true);
+  // Allow requests without Origin header (curl, mobile apps, server-to-server)
+  if (!origin) {
+    callback(null, true);
     return;
   }
 
-  callback(new Error(`Origin ${origin} not allowed by CORS`));
+  const normalized = origin.trim().replace(/\/$/, '');
+
+  // 1. Explicit allowed list
+  if (allowedOrigins.includes(normalized)) {
+    callback(null, normalized);
+    return;
+  }
+
+  // 2. Allow any localhost or 127.0.0.1 on any port
+  if (/^(https?:\/\/)(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalized)) {
+    callback(null, normalized);
+    return;
+  }
+
+  // 3. Allow Vercel deployments (production, previews, branches)
+  if (/^https:\/\/.*\.vercel\.app$/.test(normalized)) {
+    callback(null, normalized);
+    return;
+  }
+
+  // 4. Allow Railway backend domain if accessed directly
+  if (/^https:\/\/.*\.up\.railway\.app$/.test(normalized)) {
+    callback(null, normalized);
+    return;
+  }
+
+  // Reject without throwing a 500 server error
+  callback(null, false);
 };
 
 const authLimiter = rateLimit({
@@ -50,11 +88,25 @@ const authLimiter = rateLimit({
   },
 });
 
+const corsMiddleware = cors({
+  origin: corsOriginHandler,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+});
+
 export const createApp = () => {
   const app = express();
 
-  app.use(helmet());
-  app.use(cors({ origin: corsOriginHandler, credentials: true }));
+  // Allow cross-origin resources from trusted origins without Helmet blocking
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+  );
+
+  app.use(corsMiddleware);
+  app.options('*', corsMiddleware);
   app.use(morgan('combined'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
