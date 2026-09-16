@@ -29,7 +29,6 @@ const envOrigins = [
 
 const defaultOrigins = [
   'http://localhost:5173',
-  'http://localhost:3000',
   'https://chatly-x.vercel.app'
 ];
 
